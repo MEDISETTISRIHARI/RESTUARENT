@@ -118,7 +118,7 @@ app.use((err, req, res, next) => {
 // ============ START SERVER ============
 init().then(() => {
   wrapDb();
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🍽️  Restaurant Platform running!`);
     console.log(`📍 Customer Website:  http://localhost:${PORT}`);
     console.log(`🔐 Admin Panel:       http://localhost:${PORT}/admin`);
