@@ -1,0 +1,1 @@
+var fs=require("fs");var html=fs.readFileSync("public/admin.html","utf8");var lines=html.split("\n");var depth=0;for(var i=617;i<830;i++){var line=lines[i];var opens=(line.match(/<div[^>]*>/g)||[]).length;var closes=(line.match(/<\/div>/g)||[]).length;depth+=opens-closes;console.log("L"+(i+1)+" d"+depth+" +"+opens+"-"+closes+" | "+line.trim().substring(0,55));}
