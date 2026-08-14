@@ -8,37 +8,60 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --primary: #e23744;
-  --primary-dark: #c22b37;
-  --primary-light: #fff1f2;
-  --dark: #1a1a2e;
-  --dark-2: #16213e;
-  --gray-50: #f9fafb;
-  --gray-100: #f3f4f6;
-  --gray-200: #e5e7eb;
-  --gray-300: #d1d5db;
-  --gray-400: #9ca3af;
-  --gray-500: #6b7280;
-  --gray-600: #4b5563;
-  --gray-700: #374151;
-  --gray-800: #1f2937;
-  --gray-900: #111827;
-  --green: #22c55e;
-  --green-dark: #16a34a;
-  --amber: #f59e0b;
-  --red: #ef4444;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
-  --shadow: 0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -2px rgba(0,0,0,.1);
-  --shadow-md: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1);
-  --shadow-lg: 0 20px 25px -5px rgba(0,0,0,.1), 0 8px 10px -6px rgba(0,0,0,.1);
-  --radius: 12px;
+  --navy-900: #0c142a;
+  --navy-800: #101a2e;
+  --navy-700: #1a243a;
+  --ivory-50: #fdfaf6;
+  --ivory-100: #faf6f0;
+  --ivory-200: #f5efe3;
+  --terracotta: #c05621;
+  --terracotta-dark: #9a431a;
+  --terracotta-light: #e68a4a;
+  --gold: #d4a35a;
+  --gold-dark: #b3863d;
+  --gray-50: #fdfaf6;
+  --gray-100: #f7f4ee;
+  --gray-200: #ece6d9;
+  --gray-300: #dccbb8;
+  --gray-400: #b8afa0;
+  --gray-500: #9ca5a9;
+  --gray-600: #7d8289;
+  --gray-700: #4a4f55;
+  --gray-800: #2d3238;
+  --gray-900: #1a1c20;
+  --primary: var(--terracotta);
+  --primary-dark: var(--terracotta-dark);
+  --primary-light: var(--terracotta-light);
+  --secondary: var(--gold);
+  --secondary-dark: var(--gold-dark);
+  --surface: var(--ivory-50);
+  --surface-alt: var(--ivory-100);
+  --dark: var(--navy-900);
+  --dark-2: var(--navy-800);
+  --success: #27ad74;
+  --success-dark: #1e8e5f;
+  --error: #e74c3c;
+  --warning: #f39c12;
+  --border: var(--gray-200);
+  --green: #27ad74;
+  --green-dark: #1e8e5f;
+  --red: #e74c3c;
+  --amber: var(--gold);
+  --transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.04);
+  --shadow: 0 4px 6px -1px rgba(0,0,0,.06), 0 2px 4px -2px rgba(0,0,0,.06);
+  --shadow-md: 0 10px 15px -3px rgba(0,0,0,.08), 0 4px 6px -4px rgba(0,0,0,.08);
+  --shadow-lg: 0 20px 25px -5px rgba(0,0,0,.1), 0 8px 10px -6px rgba(0,0,0,.08);
+  --shadow-xl: 0 30px 40px -10px rgba(0,0,0,.12);
+  --radius: 14px;
   --radius-lg: 20px;
   --font-display: 'Playfair Display', serif;
   --font-body: 'Inter', sans-serif;
+  .icon { display: inline-block; width: 1em; height: 1em; vertical-align: middle; fill: currentColor; }
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { font-family: var(--font-body); color: var(--gray-800); background: #fff; line-height: 1.6; }
+body { font-family: var(--font-body); color: var(--gray-800); background: var(--ivory-50); line-height: 1.6; -webkit-font-smoothing: antialiased; }
 img { max-width: 100%; display: block; }
 a { text-decoration: none; color: inherit; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; }
@@ -93,7 +116,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .hero-buttons { display: flex; gap: 14px; flex-wrap: wrap; }
 .btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 50px; font-weight: 600; font-size: 15px; transition: all .25s; }
 .btn-primary { background: var(--primary); color: #fff; }
-.btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: 0 10px 20px rgba(226,55,68,.3); }
+.btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: 0 10px 20px rgba(192,86,33,.3); }
 .btn-outline { background: transparent; color: #fff; border: 2px solid rgba(255,255,255,.4); }
 .btn-outline:hover { border-color: #fff; background: rgba(255,255,255,.1); }
 .btn-dark { background: var(--dark); color: #fff; }
@@ -301,7 +324,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .form-group input, .form-group textarea, .form-group select {
   width: 100%; padding: 12px 14px; border: 1px solid var(--gray-200); border-radius: 8px; outline: none; transition: border-color .2s;
 }
-.form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(226,55,68,.1); }
+.form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(192,86,33,.1); }
 .form-group textarea { resize: vertical; min-height: 80px; }
 .form-group .error-msg { color: var(--red); font-size: 12px; margin-top: 4px; }
 .form-group.has-error input, .form-group.has-error textarea { border-color: var(--red); }
