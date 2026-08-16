@@ -20,7 +20,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Static files
 app.use('/public', express.static(path.join(__dirname, 'public')));
-
+app.get('/favicon.ico', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'favicon.ico'));
+});
 // ============ IMAGE UPLOADS ============
 const uploadDir = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(uploadDir)) {
