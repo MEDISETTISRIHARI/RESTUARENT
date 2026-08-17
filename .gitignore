@@ -1,3 +1,31 @@
 node_modules/
 .env
 .playwright-mcp/
+.kilo/
+
+# Local database (contains password hashes and sensitive data)
+data/restaurant.db
+data/restaurant-BEFORE-RECOVERY.db
+
+# Uploaded images (now stored in persistent S3/R2 storage)
+public/uploads/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Test artifacts
+admin-login-snapshot.yml
+admin-panel-final.png
+customer-panel-final.png

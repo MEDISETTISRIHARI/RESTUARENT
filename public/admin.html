@@ -1005,8 +1005,16 @@ tr:last-child td { border-bottom: none; }
         <textarea id="categoryDescription"></textarea>
       </div>
       <div class="form-group">
-        <label>Image URL</label>
-        <input type="text" id="categoryImage" placeholder="https://...">
+        <label>Image</label>
+        <input type="text" id="categoryImage" placeholder="https://..." oninput="updateCategoryImagePreview()">
+        <div style="margin-top:8px">
+          <button type="button" class="btn btn-light btn-sm" id="categoryUploadBtn" onclick="document.getElementById('categoryImageFile').click()">📁 Upload From Device</button>
+          <input type="file" id="categoryImageFile" accept="image/*" style="display:none" onchange="uploadCategoryImage(event)">
+        </div>
+        <div id="categoryImagePreview" style="margin-top:8px;display:none">
+          <img id="categoryPreviewImg" src="" alt="Category Preview" style="max-width:120px;max-height:120px;border:1px solid var(--gray-200);border-radius:8px">
+          <button type="button" class="btn btn-danger btn-sm" onclick="removeCategoryImage()" style="margin-left:8px">✕ Remove</button>
+        </div>
       </div>
       <div class="form-group">
         <label>Sort Order</label>
@@ -1301,6 +1309,31 @@ async function api(url, options = {}) {
   return data;
 }
 
+// ============ DATE/TIME HELPERS ============
+function toISTDate(isoString) {
+  if (!isoString) return '';
+  let d;
+  if (isoString.includes('T') || isoString.includes('Z')) {
+    d = new Date(isoString);
+  } else {
+    d = new Date(isoString.replace(' ', 'T') + 'Z');
+  }
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+}
+
+function toISTDateOnly(isoString) {
+  if (!isoString) return '';
+  let d;
+  if (isoString.includes('T') || isoString.includes('Z')) {
+    d = new Date(isoString);
+  } else {
+    d = new Date(isoString.replace(' ', 'T') + 'Z');
+  }
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'short', day: '2-digit' });
+}
+
 // ============ TOASTS ============
 function showToast(message, type = 'success') {
   const icons = { success: '✅', error: '❌', info: 'ℹ️' };
@@ -1472,7 +1505,7 @@ async function loadDashboard() {
         <td>${o.customer_name}</td>
         <td>₹${Number(o.grand_total).toFixed(2)}</td>
         <td><span class="badge badge-${statusColors[o.order_status] || 'gray'}">${statusLabels[o.order_status] || o.order_status}</span></td>
-        <td>${new Date(o.created_at).toLocaleString()}</td>
+        <td>${toISTDate(o.created_at)}</td>
       </tr>
     `).join('') || '<tr><td colspan="5" class="empty-state"><p>No orders yet</p></td></tr>';
 
@@ -1533,7 +1566,7 @@ async function loadOrders() {
         <td><span class="badge badge-${payColors[o.payment_status] || 'gray'}">${payLabels[o.payment_status] || o.payment_status}</span></td>
         <td><span class="badge badge-${statusColors[o.order_status] || 'gray'}">${statusLabels[o.order_status] || o.order_status}</span></td>
         <td>${o.delivery_person_name || '<span style="color:var(--gray-400)">Not assigned</span>'}</td>
-        <td>${new Date(o.created_at).toLocaleString()}</td>
+        <td>${toISTDate(o.created_at)}</td>
         <td>
           <div class="table-actions">
             <button class="action-btn view" onclick="openOrderDetail(${o.id})">View</button>
@@ -1586,7 +1619,7 @@ async function openOrderDetail(id) {
     const historyHTML = order.status_history.map(h => `
       <div style="display:flex;gap:10px;padding:8px 0;align-items:center">
         <span class="badge badge-${statusColors[h.status] || 'gray'}">${statusLabels[h.status] || h.status}</span>
-        <span style="font-size:12px;color:var(--gray-400)">${new Date(h.created_at).toLocaleString()}</span>
+        <span style="font-size:12px;color:var(--gray-400)">${toISTDate(h.created_at)}</span>
         ${h.note ? `<span style="font-size:12px;color:var(--gray-500)">— ${h.note}</span>` : ''}
       </div>
     `).join('');
@@ -1636,7 +1669,7 @@ async function openOrderDetail(id) {
           <p><strong>Payment Status:</strong> <span class="badge badge-${order.payment_status === 'verified' ? 'green' : order.payment_status === 'rejected' ? 'red' : order.payment_status === 'failed' ? 'red' : order.payment_status === 'refunded' ? 'gray' : 'amber'}">${payLabels[order.payment_status] || order.payment_status}</span></p>
           <p style="color:var(--gray-500)">Amount: ₹${Number(order.grand_total).toFixed(2)}</p>
           ${order.payment && order.payment.payment_reference ? `<p style="color:var(--gray-500)">Reference / UTR: ${order.payment.payment_reference}</p>` : ''}
-          ${order.payment && order.payment.created_at ? `<p style="color:var(--gray-500)">Submitted: ${new Date(order.payment.created_at).toLocaleString()}</p>` : ''}
+          ${order.payment && order.payment.created_at ? `<p style="color:var(--gray-500)">Submitted: ${toISTDate(order.payment.created_at)}</p>` : ''}
           ${order.payment && order.payment.payment_proof ? `
             <div style="margin:8px 0">
               <strong>Proof:</strong>
@@ -1953,7 +1986,7 @@ async function loadTrashOrders() {
         <td>${o.customer_name}</td>
         <td><strong>₹${Number(o.grand_total).toFixed(2)}</strong></td>
         <td><span class="badge badge-${statusColors[o.order_status] || 'gray'}">${statusLabels[o.order_status] || o.order_status}</span></td>
-        <td>${new Date(o.deleted_at).toLocaleString()}</td>
+        <td>${toISTDate(o.deleted_at)}</td>
         <td>
           <div class="table-actions">
             <button class="action-btn view" onclick="openOrderDetail(${o.id})" title="View order">View</button>
@@ -2190,12 +2223,62 @@ async function loadCategories() {
   }
 }
 
+function updateCategoryImagePreview() {
+  const url = document.getElementById('categoryImage').value.trim();
+  const preview = document.getElementById('categoryImagePreview');
+  const img = document.getElementById('categoryPreviewImg');
+  if (url) {
+    img.src = url;
+    preview.style.display = 'block';
+  } else {
+    preview.style.display = 'none';
+    img.src = '';
+  }
+}
+
+async function uploadCategoryImage(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const btn = document.getElementById('categoryUploadBtn');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Uploading...';
+  const formData = new FormData();
+  formData.append('image', file);
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    document.getElementById('categoryImage').value = data.url;
+    updateCategoryImagePreview();
+    showToast('Image uploaded!');
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+    event.target.value = '';
+  }
+}
+
+function removeCategoryImage() {
+  document.getElementById('categoryImage').value = '';
+  document.getElementById('categoryImagePreview').style.display = 'none';
+  document.getElementById('categoryPreviewImg').src = '';
+  document.getElementById('categoryImageFile').value = '';
+}
+
 async function openCategoryModal(id = null) {
   editingCategoryId = id;
   document.getElementById('categoryModalTitle').textContent = id ? 'Edit Category' : 'Add Category';
   document.getElementById('categoryName').value = '';
   document.getElementById('categoryDescription').value = '';
   document.getElementById('categoryImage').value = '';
+  document.getElementById('categoryImageFile').value = '';
   document.getElementById('categorySortOrder').value = '0';
   document.getElementById('categoryActive').checked = true;
 
@@ -2210,20 +2293,42 @@ async function openCategoryModal(id = null) {
       document.getElementById('categoryActive').checked = !!cat.is_active;
     }
   }
+  updateCategoryImagePreview();
   document.getElementById('categoryModal').classList.add('active');
 }
 
 async function saveCategory() {
   const name = document.getElementById('categoryName').value.trim();
   if (!name) { showToast('Category name is required', 'error'); return; }
-  const payload = {
-    name,
-    description: document.getElementById('categoryDescription').value.trim(),
-    image: document.getElementById('categoryImage').value.trim() || null,
-    sort_order: parseInt(document.getElementById('categorySortOrder').value) || 0,
-    is_active: document.getElementById('categoryActive').checked
-  };
+
+  const fileInput = document.getElementById('categoryImageFile');
+  const hasFile = fileInput.files && fileInput.files.length > 0;
+
   try {
+    let imageUrl = document.getElementById('categoryImage').value.trim() || null;
+
+    if (hasFile) {
+      const formData = new FormData();
+      formData.append('image', fileInput.files[0]);
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      imageUrl = data.url;
+      document.getElementById('categoryImage').value = imageUrl;
+    }
+
+    const payload = {
+      name,
+      description: document.getElementById('categoryDescription').value.trim(),
+      image: imageUrl,
+      sort_order: parseInt(document.getElementById('categorySortOrder').value) || 0,
+      is_active: document.getElementById('categoryActive').checked
+    };
+
     if (editingCategoryId) {
       await api(`/api/admin/categories/${editingCategoryId}`, { method: 'PUT', body: JSON.stringify(payload) });
       showToast('Category updated!');
@@ -2746,7 +2851,7 @@ async function openCustomerDetail(id) {
       <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--gray-200);align-items:center">
         <div>
           <strong>${o.order_number}</strong>
-          <div style="font-size:12px;color:var(--gray-400)">${new Date(o.created_at).toLocaleDateString()}</div>
+          <div style="font-size:12px;color:var(--gray-400)">${toISTDateOnly(o.created_at)}</div>
         </div>
         <div style="text-align:right">
           <strong>₹${o.grand_total.toFixed(2)}</strong>
@@ -3347,7 +3452,7 @@ async function loadNotifications() {
       <div class="notif-item ${!n.is_read ? 'unread' : ''}" onclick="markNotifRead(${n.id})">
         <div class="notif-title">${n.title}</div>
         <div class="notif-msg">${n.message}</div>
-        <div class="notif-time">${new Date(n.created_at).toLocaleString()}</div>
+        <div class="notif-time">${toISTDate(n.created_at)}</div>
       </div>
     `).join('') || '<div class="empty-state"><p>No notifications</p></div>';
   } catch (e) {}

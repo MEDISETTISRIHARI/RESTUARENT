@@ -19,6 +19,7 @@ const {
 } = require('../utils/helpers');
 const { calculateCartPrice, getEligiblePromotionsForProduct, calculateProductPrice } = require('../services/promotionEngine');
 const { signCustomerToken, verifyCustomerToken, requireCustomer } = require('../middleware/auth');
+const { uploadToStorage, isStorageConfigured } = require('../utils/storage');
 
 // ============ PAYMENT METHODS ============
 router.get('/payment-methods', (req, res) => {
@@ -170,14 +171,7 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, path.join(__dirname, '..', 'public', 'uploads')),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname);
-      const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-      cb(null, unique + ext);
-    }
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = /jpeg|jpg|png|gif|webp/i;
@@ -192,8 +186,30 @@ router.post('/upload', upload.single('image'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
-  const url = `/public/uploads/${req.file.filename}`;
-  res.json({ url });
+
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+
+  if (!isStorageConfigured()) {
+    if (isProduction) {
+      return res.status(500).json({
+        error: 'Persistent image storage is not configured. Set STORAGE_BACKEND=s3 (or r2) and provide S3_REGION, S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_BUCKET, and S3_PUBLIC_URL environment variables.'
+      });
+    }
+    const ext = path.extname(req.file.originalname);
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const filename = unique + ext;
+    const filepath = path.join(uploadDir, filename);
+    fs.writeFileSync(filepath, req.file.buffer);
+    const url = `/public/uploads/${filename}`;
+    return res.json({ url });
+  }
+
+  uploadToStorage(req.file.buffer, req.file.originalname, req.file.mimetype)
+    .then(url => res.json({ url }))
+    .catch(err => {
+      console.error('Upload error:', err);
+      res.status(500).json({ error: 'Upload failed: ' + err.message });
+    });
 });
 
 // ============ RESTAURANT INFO ============
@@ -610,13 +626,14 @@ router.post('/orders', requireCustomer, (req, res) => {
       order_number, tracking_id, customer_id, customer_name, customer_phone, customer_address,
       customer_landmark, customer_area, customer_pincode, delivery_instructions,
       subtotal, discount, coupon_code, coupon_discount, delivery_charge, tax, grand_total,
-      payment_method, payment_status, order_status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      payment_method, payment_status, order_status, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     orderNumber, trackingId, customerId, customer_name.trim(), customer_phone.trim(), customer_address.trim(),
     customer_landmark || '', customer_area || '', customer_pincode.trim(), delivery_instructions || '',
     subtotal, promotionDiscount, couponCode, couponDiscount, deliveryCharge, tax, grandTotal,
-    payment_method, 'pending', payment_method === 'cod' ? 'received' : 'payment_pending'
+    payment_method, 'pending', payment_method === 'cod' ? 'received' : 'payment_pending',
+    new Date().toISOString()
   ]);
 
   const orderId = orderResult.lastInsertRowid;

@@ -4,9 +4,10 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
 const dataDir = path.join(__dirname, '..', 'data');
-const dbFile = path.join(dataDir, 'restaurant.db');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+const dbFile = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(dataDir, 'restaurant.db');
+const dbDir = path.dirname(dbFile);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
 }
 
 let db = null;

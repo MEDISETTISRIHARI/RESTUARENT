@@ -4,6 +4,9 @@
   "description": "Complete Restaurant Management & Online Ordering Platform",
   "main": "server.js",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
@@ -11,6 +14,7 @@
     "init-db": "node db/database.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "express": "^4.19.2",

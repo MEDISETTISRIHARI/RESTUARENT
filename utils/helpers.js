@@ -71,8 +71,8 @@ function createNotification(type, title, message, recipientType = 'admin', order
 function addOrderStatusHistory(orderId, status, note = '') {
   const db = getDb();
   db.run(
-    'INSERT INTO order_status_history (order_id, status, note) VALUES (?, ?, ?)',
-    [orderId, status, note]
+    'INSERT INTO order_status_history (order_id, status, note, created_at) VALUES (?, ?, ?, ?)',
+    [orderId, status, note, new Date().toISOString()]
   );
 }
 

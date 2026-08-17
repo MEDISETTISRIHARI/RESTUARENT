@@ -969,6 +969,31 @@ async function api(url, options = {}) {
   return data;
 }
 
+// ============ DATE/TIME HELPERS ============
+function toISTDate(isoString) {
+  if (!isoString) return '';
+  let d;
+  if (isoString.includes('T') || isoString.includes('Z')) {
+    d = new Date(isoString);
+  } else {
+    d = new Date(isoString.replace(' ', 'T') + 'Z');
+  }
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+}
+
+function toISTDateOnly(isoString) {
+  if (!isoString) return '';
+  let d;
+  if (isoString.includes('T') || isoString.includes('Z')) {
+    d = new Date(isoString);
+  } else {
+    d = new Date(isoString.replace(' ', 'T') + 'Z');
+  }
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'short', day: '2-digit' });
+}
+
 // ============ TOASTS ============
 function showToast(message, type = 'success') {
   const icons = { success: '✅', error: '❌', info: 'ℹ️' };
@@ -2262,7 +2287,7 @@ function renderMyOrders() {
                 <h3 style="margin:0">Order ${o.order_number}</h3>
                 ${o.tracking_id ? `<div style="font-size:13px;color:var(--gray-500)">Tracking ID: ${o.tracking_id}</div>` : ''}
               </div>
-              <span style="font-size:13px;color:var(--gray-500)">${new Date(o.created_at).toLocaleString()}</span>
+              <span style="font-size:13px;color:var(--gray-500)">${toISTDate(o.created_at)}</span>
             </div>
            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
              <span class="badge badge-${o.payment_status === 'verified' ? 'green' : o.payment_status === 'rejected' ? 'red' : 'amber'}">${payLabels[o.payment_status] || o.payment_status}</span>
@@ -2343,7 +2368,7 @@ function renderOrderDetailModal(order) {
     return `
       <div class="timeline-item ${completed ? 'completed' : ''} ${current ? 'current' : ''}">
         <div class="tl-status">${statusLabels[h.status] || h.status}</div>
-        <div class="tl-time">${new Date(h.created_at).toLocaleString()}</div>
+        <div class="tl-time">${toISTDate(h.created_at)}</div>
         ${h.note ? `<div class="tl-note">${h.note}</div>` : ''}
       </div>
     `;
@@ -2378,7 +2403,7 @@ function renderOrderDetailModal(order) {
       <div class="order-info-item"><div class="oi-label">Phone</div><div class="oi-value">${order.customer_phone}</div></div>
       <div class="order-info-item"><div class="oi-label">Payment Method</div><div class="oi-value">${formatPaymentMethod(order.payment_method)}</div></div>
       <div class="order-info-item"><div class="oi-label">Payment Status</div><div class="oi-value"><span class="badge badge-${order.payment_status === 'verified' ? 'green' : order.payment_status === 'rejected' ? 'red' : 'amber'}">${payLabels[order.payment_status] || order.payment_status}</span></div></div>
-      <div class="order-info-item"><div class="oi-label">Order Date</div><div class="oi-value">${new Date(order.created_at).toLocaleString()}</div></div>
+      <div class="order-info-item">      <div class="oi-label">Order Date</div><div class="oi-value">${toISTDate(order.created_at)}</div></div>
       <div class="order-info-item"><div class="oi-label">Total</div><div class="oi-value">₹${Number(order.grand_total).toFixed(2)}</div></div>
     </div>
 
@@ -2478,7 +2503,7 @@ function renderTrackResult(order) {
     return `
       <div class="timeline-item ${completed ? 'completed' : ''} ${current ? 'current' : ''}">
         <div class="tl-status">${statusLabels[h.status] || h.status}</div>
-        <div class="tl-time">${new Date(h.created_at).toLocaleString()}</div>
+        <div class="tl-time">${toISTDate(h.created_at)}</div>
         ${h.note ? `<div class="tl-note">${h.note}</div>` : ''}
       </div>
     `;
@@ -2524,7 +2549,7 @@ function renderTrackResult(order) {
         <div class="order-info-item"><div class="oi-label">Payment Method</div><div class="oi-value">${formatPaymentMethod(order.payment_method)}</div></div>
         <div class="order-info-item"><div class="oi-label">Payment Status</div><div class="oi-value"><span class="badge badge-${payLabels[order.payment_status] ? '' : ''}">${payLabels[order.payment_status] || order.payment_status}</span></div></div>
         <div class="order-info-item"><div class="oi-label">Total</div><div class="oi-value">₹${order.grand_total.toFixed(2)}</div></div>
-        <div class="order-info-item"><div class="oi-label">Date</div><div class="oi-value">${new Date(order.created_at).toLocaleString()}</div></div>
+        <div class="order-info-item">        <div class="oi-label">Date</div><div class="oi-value">${toISTDate(order.created_at)}</div></div>
         <div class="order-info-item"><div class="oi-label">Address</div><div class="oi-value">${order.customer_address}</div></div>
         ${order.coupon_code ? `<div class="order-info-item"><div class="oi-label">Coupon</div><div class="oi-value">${order.coupon_code} (−₹${Number(order.coupon_discount).toFixed(2)})</div></div>` : ''}
       </div>
