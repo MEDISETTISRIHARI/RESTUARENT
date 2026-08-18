@@ -20,34 +20,6 @@ function verifyToken(token) {
   }
 }
 
-function requireAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  const token = authHeader.split(' ')[1];
-  const decoded = verifyToken(token);
-  if (!decoded) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
-  const db = getDb();
-  const user = db.get('SELECT id, username, email, role FROM admin_users WHERE id = ?', [decoded.id]);
-  if (!user) {
-    return res.status(401).json({ error: 'User not found' });
-  }
-  req.user = user;
-  next();
-}
-
-function requireAdmin(req, res, next) {
-  requireAuth(req, res, () => {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-    next();
-  });
-}
-
 function signCustomerToken(customer) {
   return jwt.sign(
     { id: customer.id, name: customer.name, phone: customer.phone, role: 'customer' },
@@ -64,7 +36,54 @@ function verifyCustomerToken(token) {
   }
 }
 
-function requireCustomer(req, res, next) {
+function asyncMiddleware(fn) {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
+async function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  const token = authHeader.split(' ')[1];
+  const decoded = verifyToken(token);
+  if (!decoded) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+  const db = getDb();
+  const user = await db.get('SELECT id, username, email, role FROM admin_users WHERE id = ?', [decoded.id]);
+  if (!user) {
+    return res.status(401).json({ error: 'User not found' });
+  }
+  req.user = user;
+  next();
+}
+
+const requireAdmin = asyncMiddleware(async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  const token = authHeader.split(' ')[1];
+  const decoded = verifyToken(token);
+  if (!decoded) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+  const db = getDb();
+  const user = await db.get('SELECT id, username, email, role FROM admin_users WHERE id = ?', [decoded.id]);
+  if (!user) {
+    return res.status(401).json({ error: 'User not found' });
+  }
+  if (user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  req.user = user;
+  next();
+});
+
+const requireCustomer = asyncMiddleware(async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Customer authentication required' });
@@ -75,12 +94,12 @@ function requireCustomer(req, res, next) {
     return res.status(401).json({ error: 'Invalid or expired customer token' });
   }
   const db = getDb();
-  const customer = db.get('SELECT id, name, phone, email FROM customers WHERE id = ?', [decoded.id]);
+  const customer = await db.get('SELECT id, name, phone, email FROM customers WHERE id = ?', [decoded.id]);
   if (!customer) {
     return res.status(401).json({ error: 'Customer not found' });
   }
   req.customer = customer;
   next();
-}
+});
 
 module.exports = { signToken, verifyToken, requireAuth, requireAdmin, signCustomerToken, verifyCustomerToken, requireCustomer, JWT_SECRET };

@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { init, getDb, wrapDb } = require('../db/database');
+const { init, getDb, wrapDb, isPostgres } = require('../db/database');
 const { uploadToStorage, isStorageConfigured } = require('../utils/storage');
 
 const UPLOAD_DIR = path.join(__dirname, '..', 'public', 'uploads');
@@ -9,7 +9,7 @@ function collectUploads() {
   if (!fs.existsSync(UPLOAD_DIR)) return [];
   return fs.readdirSync(UPLOAD_DIR).filter(f => {
     const ext = path.extname(f).toLowerCase();
-    return /\.(png|jpg|jpeg|gif|webp)$/i.test(f);
+    return /\.(png|jpg|jpeg|gif|webp)$/i.test(ext);
   });
 }
 
@@ -49,13 +49,13 @@ async function migrate() {
     const filepath = path.join(UPLOAD_DIR, filename);
     const oldUrl = buildOldUrl(filename);
 
-    const paymentsCount = db.get("SELECT COUNT(*) as cnt FROM payments WHERE payment_proof = ?", [oldUrl]);
-    const settingsCount = db.get("SELECT COUNT(*) as cnt FROM restaurant_settings WHERE payment_qr_image = ?", [oldUrl]);
+    const paymentsCount = await db.get("SELECT COUNT(*) as cnt FROM payments WHERE payment_proof = ?", [oldUrl]);
+    const settingsCount = await db.get("SELECT COUNT(*) as cnt FROM restaurant_settings WHERE payment_qr_image = ?", [oldUrl]);
     const refCount = (paymentsCount ? paymentsCount.cnt : 0) + (settingsCount ? settingsCount.cnt : 0);
 
     if (refCount === 0) {
       report.skipped.push({ filename, oldUrl, reason: 'No database references found' });
-      console.log('⊘ Skipped: ' + filename + ' (no DB references)');
+      console.log('Skipped: ' + filename + ' (no DB references)');
       continue;
     }
 
@@ -70,29 +70,29 @@ async function migrate() {
       const result = await uploadToStorage(buffer, filename, 'image/' + ext.replace('.', ''));
       newUrl = result;
       report.uploaded.push({ filename, oldUrl, newUrl });
-      console.log('✓ Uploaded: ' + filename + ' -> ' + newUrl);
+      console.log('Uploaded: ' + filename + ' -> ' + newUrl);
     } catch (err) {
-      console.error('✗ Failed to upload: ' + filename + ' - ' + err.message);
+      console.error('Failed to upload: ' + filename + ' - ' + err.message);
       report.failed.push({ filename, oldUrl, error: err.message });
       continue;
     }
 
     if (!newUrl) {
-      console.error('✗ No URL returned for: ' + filename);
+      console.error('No URL returned for: ' + filename);
       report.failed.push({ filename, oldUrl, error: 'No URL returned' });
       continue;
     }
 
-    const payments = db.all("SELECT id, payment_proof FROM payments WHERE payment_proof = ?", [oldUrl]);
+    const payments = await db.all("SELECT id, payment_proof FROM payments WHERE payment_proof = ?", [oldUrl]);
     if (payments.length > 0) {
-      db.run("UPDATE payments SET payment_proof = ? WHERE payment_proof = ?", [newUrl, oldUrl]);
+      await db.run("UPDATE payments SET payment_proof = ? WHERE payment_proof = ?", [newUrl, oldUrl]);
       report.updated.push({ table: 'payments', column: 'payment_proof', oldUrl, newUrl, count: payments.length });
       console.log('  Updated ' + payments.length + ' payment record(s)');
     }
 
-    const settings = db.get("SELECT id, payment_qr_image FROM restaurant_settings WHERE payment_qr_image = ?", [oldUrl]);
+    const settings = await db.get("SELECT id, payment_qr_image FROM restaurant_settings WHERE payment_qr_image = ?", [oldUrl]);
     if (settings) {
-      db.run("UPDATE restaurant_settings SET payment_qr_image = ? WHERE payment_qr_image = ?", [newUrl, oldUrl]);
+      await db.run("UPDATE restaurant_settings SET payment_qr_image = ? WHERE payment_qr_image = ?", [newUrl, oldUrl]);
       report.updated.push({ table: 'restaurant_settings', column: 'payment_qr_image', oldUrl, newUrl, count: 1 });
       console.log('  Updated restaurant_settings QR image');
     }

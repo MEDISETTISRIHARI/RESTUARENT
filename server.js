@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 
-const { init, getDb, wrapDb } = require('./db/database');
+const { init, getDb, wrapDb, isPostgres } = require('./db/database');
 const { isStorageConfigured } = require('./utils/storage');
 const authRoutes = require('./routes/auth');
 const publicRoutes = require('./routes/public');
@@ -12,23 +12,20 @@ const promotionRoutes = require('./routes/promotions');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ============ MIDDLEWARE ============
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Static files
 app.use('/public', express.static(path.join(__dirname, 'public')));
 app.get('/favicon.ico', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'favicon.ico'));
 });
-// ============ API ROUTES ============
+
 app.use('/api/auth', authRoutes);
 app.use('/api', publicRoutes);
 app.use('/api/promotions', promotionRoutes);
 app.use('/api/admin', adminRoutes);
 
-// ============ CUSTOMER WEBSITE ============
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -65,7 +62,6 @@ app.get('/food/:id', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ============ ADMIN PANEL ============
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
@@ -74,13 +70,11 @@ app.get('/admin/*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
-// ============ ERROR HANDLING ============
 app.use((err, req, res, next) => {
   console.error('Error:', err.message, err.stack);
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-// ============ START SERVER ============
 init().then(() => {
   wrapDb();
 

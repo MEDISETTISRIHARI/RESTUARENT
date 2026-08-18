@@ -3,53 +3,48 @@ const router = express.Router();
 const { getDb } = require('../db/database');
 const { calculateProductPrice, calculateCartPrice, getEligiblePromotionsForProduct } = require('../services/promotionEngine');
 
-// ============ PUBLIC PROMOTION APIS ============
-
-// Get all active promotions (for customer-facing Offers page)
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const db = getDb();
-  const promotions = db.all(`
+  const promotions = await db.all(`
     SELECT id, name, description, discount_type, discount_value, scope, 
            min_order_value, max_discount, start_date, end_date, 
            is_active, usage_limit, used_count, priority, allow_stacking, created_at
     FROM promotions
     WHERE is_active = 1 
-      AND (start_date IS NULL OR start_date <= datetime('now'))
-      AND (end_date IS NULL OR end_date > datetime('now'))
+      AND (start_date IS NULL OR start_date <= CURRENT_TIMESTAMP)
+      AND (end_date IS NULL OR end_date > CURRENT_TIMESTAMP)
       AND (usage_limit IS NULL OR used_count < usage_limit)
     ORDER BY priority DESC, created_at DESC
   `);
   
-  // Parse JSON fields
-  promotions.forEach(p => {
+  for (const p of promotions) {
     try { p.products = p.products ? JSON.parse(p.products) : []; } catch(e) { p.products = []; }
     try { p.categories = p.categories ? JSON.parse(p.categories) : []; } catch(e) { p.categories = []; }
-  });
+  }
   
   res.json(promotions);
 });
 
-// Get active promotions with eligible products (for Offers page display)
-router.get('/offers', (req, res) => {
+router.get('/offers', async (req, res) => {
   const db = getDb();
-  const promotions = db.all(`
+  const promotions = await db.all(`
     SELECT id, name, description, discount_type, discount_value, scope,
            products, categories, min_order_value, max_discount, start_date, end_date,
            is_active, usage_limit, used_count, priority, allow_stacking, created_at
     FROM promotions
     WHERE is_active = 1
-      AND (start_date IS NULL OR start_date <= datetime('now'))
-      AND (end_date IS NULL OR end_date > datetime('now'))
+      AND (start_date IS NULL OR start_date <= CURRENT_TIMESTAMP)
+      AND (end_date IS NULL OR end_date > CURRENT_TIMESTAMP)
       AND (usage_limit IS NULL OR used_count < usage_limit)
     ORDER BY priority DESC, created_at DESC
   `);
   
-  // For each promotion, get eligible products
-  const result = promotions.map(p => {
+  const result = [];
+  for (const p of promotions) {
     let eligibleProducts = [];
     
     if (p.scope === 'all_products') {
-      eligibleProducts = db.all(`
+      eligibleProducts = await db.all(`
         SELECT f.id, f.name, f.image, f.price, f.discount_price, f.is_veg, f.is_available,
                c.name as category_name
         FROM food_items f
@@ -62,7 +57,7 @@ router.get('/offers', (req, res) => {
         const catIds = JSON.parse(p.categories || '[]');
         if (catIds.length > 0) {
           const placeholders = catIds.map(() => '?').join(',');
-          eligibleProducts = db.all(`
+          eligibleProducts = await db.all(`
             SELECT f.id, f.name, f.image, f.price, f.discount_price, f.is_veg, f.is_available,
                    c.name as category_name
             FROM food_items f
@@ -77,39 +72,37 @@ router.get('/offers', (req, res) => {
         const prodIds = JSON.parse(p.products || '[]');
         if (prodIds.length > 0) {
           const placeholders = prodIds.map(() => '?').join(',');
-          eligibleProducts = db.all(`
+          eligibleProducts = await db.all(`
             SELECT f.id, f.name, f.image, f.price, f.discount_price, f.is_veg, f.is_available,
                    c.name as category_name
             FROM food_items f
             LEFT JOIN categories c ON f.category_id = c.id
-            WHERE f.id IN (${placeholders}) AND f.is_available = 1
+            WHERE f.id IN (${placeholders})
           `, prodIds);
         }
       } catch(e) {}
     }
     
-    // Calculate effective prices for each product
-    eligibleProducts.forEach(product => {
+    for (const product of eligibleProducts) {
       const basePrice = product.discount_price || product.price;
       const priceInfo = calculateProductPrice(basePrice, [p]);
       product.basePrice = basePrice;
       product.effectivePrice = priceInfo.effectivePrice;
       product.discountAmount = priceInfo.discountAmount;
       product.selectedPromotion = priceInfo.selectedPromotion;
-    });
+    }
     
-    return {
+    result.push({
       ...p,
       products: eligibleProducts,
       products_count: eligibleProducts.length
-    };
-  });
+    });
+  }
   
   res.json(result);
 });
 
-// Calculate price for a product with promotions
-router.post('/calculate-product', (req, res) => {
+router.post('/calculate-product', async (req, res) => {
   const { food_item_id, quantity = 1 } = req.body;
   
   if (!food_item_id) {
@@ -117,7 +110,7 @@ router.post('/calculate-product', (req, res) => {
   }
   
   const db = getDb();
-  const foodItem = db.get('SELECT * FROM food_items WHERE id = ? AND is_available = 1', [food_item_id]);
+  const foodItem = await db.get('SELECT * FROM food_items WHERE id = ? AND is_available = 1', [food_item_id]);
   
   if (!foodItem) {
     return res.status(404).json({ error: 'Food item not found or unavailable' });
@@ -125,25 +118,21 @@ router.post('/calculate-product', (req, res) => {
   
   const basePrice = foodItem.discount_price || foodItem.price;
   
-  // Get all active promotions
-  const allPromotions = db.all(`
+  const allPromotions = await db.all(`
     SELECT * FROM promotions
     WHERE is_active = 1 
-      AND (start_date IS NULL OR start_date <= datetime('now'))
-      AND (end_date IS NULL OR end_date > datetime('now'))
+      AND (start_date IS NULL OR start_date <= CURRENT_TIMESTAMP)
+      AND (end_date IS NULL OR end_date > CURRENT_TIMESTAMP)
       AND (usage_limit IS NULL OR used_count < usage_limit)
   `);
   
-  // Parse JSON fields
-  allPromotions.forEach(p => {
+  for (const p of allPromotions) {
     try { p.products = p.products ? JSON.parse(p.products) : []; } catch(e) { p.products = []; }
     try { p.categories = p.categories ? JSON.parse(p.categories) : []; } catch(e) { p.categories = []; }
-  });
+  }
   
-  // Get eligible promotions for this product
-  const eligiblePromotions = getEligiblePromotionsForProduct(foodItem.id, allPromotions);
+  const eligiblePromotions = await getEligiblePromotionsForProduct(foodItem.id, allPromotions);
   
-  // Calculate effective price
   const priceInfo = calculateProductPrice(basePrice, eligiblePromotions);
   
   res.json({
@@ -159,8 +148,7 @@ router.post('/calculate-product', (req, res) => {
   });
 });
 
-// Calculate cart total with promotions
-router.post('/calculate-cart', (req, res) => {
+router.post('/calculate-cart', async (req, res) => {
   const { items, coupon_code } = req.body;
   
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -169,27 +157,24 @@ router.post('/calculate-cart', (req, res) => {
   
   const db = getDb();
   
-  // Get all active promotions
-  const allPromotions = db.all(`
+  const allPromotions = await db.all(`
     SELECT * FROM promotions
     WHERE is_active = 1 
-      AND (start_date IS NULL OR start_date <= datetime('now'))
-      AND (end_date IS NULL OR end_date > datetime('now'))
+      AND (start_date IS NULL OR start_date <= CURRENT_TIMESTAMP)
+      AND (end_date IS NULL OR end_date > CURRENT_TIMESTAMP)
       AND (usage_limit IS NULL OR used_count < usage_limit)
   `);
   
-  // Parse JSON fields
-  allPromotions.forEach(p => {
+  for (const p of allPromotions) {
     try { p.products = p.products ? JSON.parse(p.products) : []; } catch(e) { p.products = []; }
     try { p.categories = p.categories ? JSON.parse(p.categories) : []; } catch(e) { p.categories = []; }
-  });
+  }
   
-  // Build cart items with base prices
   const cartItems = [];
   let subtotal = 0;
 
   for (const item of items) {
-    const food = db.get('SELECT * FROM food_items WHERE id = ? AND is_available = 1', [item.food_item_id]);
+    const food = await db.get('SELECT * FROM food_items WHERE id = ? AND is_available = 1', [item.food_item_id]);
     if (!food) {
       return res.status(400).json({ error: `Food item ${item.food_item_id} not found or unavailable` });
     }
@@ -209,15 +194,13 @@ router.post('/calculate-cart', (req, res) => {
     });
   }
   
-  // Calculate cart price with promotions
   const cartPrice = calculateCartPrice(cartItems, allPromotions, { subtotal });
   
-  // Apply coupon if provided
   let couponDiscount = 0;
   let couponInfo = null;
   if (coupon_code) {
     const { validateCoupon } = require('../utils/helpers');
-    const result = validateCoupon(coupon_code, cartPrice.effectiveSubtotal);
+    const result = await validateCoupon(coupon_code, cartPrice.effectiveSubtotal);
     if (!result.valid) {
       return res.status(400).json({ error: result.error });
     }
@@ -240,10 +223,9 @@ router.post('/calculate-cart', (req, res) => {
   });
 });
 
-// Get promotion by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   const db = getDb();
-  const promotion = db.get('SELECT * FROM promotions WHERE id = ?', [req.params.id]);
+  const promotion = await db.get('SELECT * FROM promotions WHERE id = ?', [req.params.id]);
   if (!promotion) {
     return res.status(404).json({ error: 'Promotion not found' });
   }

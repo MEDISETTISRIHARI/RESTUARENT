@@ -316,12 +316,11 @@ function calculateCartDiscount(promotion, cartSubtotal) {
  * @param {Array} allPromotions - All promotions from DB
  * @returns {Array} - Eligible promotions for this product
  */
-function getEligiblePromotionsForProduct(foodItemId, allPromotions) {
+async function getEligiblePromotionsForProduct(foodItemId, allPromotions) {
   if (!foodItemId || !allPromotions) return [];
 
-  // Get the food item details to check category
   const db = getDb();
-  const foodItem = db.get(`
+  const foodItem = await db.get(`
     SELECT f.*, c.slug as category_slug
     FROM food_items f
     LEFT JOIN categories c ON f.category_id = c.id

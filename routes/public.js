@@ -21,10 +21,9 @@ const { calculateCartPrice, getEligiblePromotionsForProduct, calculateProductPri
 const { signCustomerToken, verifyCustomerToken, requireCustomer } = require('../middleware/auth');
 const { uploadToStorage, isStorageConfigured } = require('../utils/storage');
 
-// ============ PAYMENT METHODS ============
-router.get('/payment-methods', (req, res) => {
+router.get('/payment-methods', async (req, res) => {
   const db = getDb();
-  const settings = db.get('SELECT * FROM restaurant_settings WHERE id = 1');
+  const settings = await db.get('SELECT * FROM restaurant_settings WHERE id = 1');
   const methods = [];
 
   if (settings.payment_upi_enabled) {
@@ -71,38 +70,37 @@ router.get('/payment-methods', (req, res) => {
   res.json(methods);
 });
 
-// ============ CUSTOMER AUTH ============
-router.post('/customer/register', (req, res) => {
+router.post('/customer/register', async (req, res) => {
   const db = getDb();
   const { name, phone, email, password } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
   if (!phone || !/^[+\d][\d\s-]{7,14}$/.test(phone.trim())) return res.status(400).json({ error: 'Valid phone number is required' });
   if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
 
-  const existing = db.get('SELECT * FROM customers WHERE phone = ?', [phone.trim()]);
+  const existing = await db.get('SELECT * FROM customers WHERE phone = ?', [phone.trim()]);
   if (existing && existing.password_hash) {
     return res.status(400).json({ error: 'An account with this phone number already exists. Please login instead.' });
   }
   if (existing && existing.is_deleted === 1) {
-    db.run('UPDATE customers SET name = ?, email = ?, password_hash = ?, is_deleted = 0, deleted_at = NULL, deleted_by = NULL WHERE id = ?',
+    await db.run('UPDATE customers SET name = ?, email = ?, password_hash = ?, is_deleted = 0, deleted_at = NULL, deleted_by = NULL WHERE id = ?',
       [name.trim(), email ? email.trim() : null, bcrypt.hashSync(password, 10), existing.id]);
     const token = signCustomerToken({ id: existing.id, name: name.trim(), phone: phone.trim(), email: email || null });
     return res.json({ token, customer: { id: existing.id, name: name.trim(), phone: phone.trim(), email: email || null } });
   }
 
   const hash = bcrypt.hashSync(password, 10);
-  const result = db.run('INSERT INTO customers (name, phone, email, password_hash) VALUES (?, ?, ?, ?)',
+  const result = await db.run('INSERT INTO customers (name, phone, email, password_hash) VALUES (?, ?, ?, ?)',
     [name.trim(), phone.trim(), email ? email.trim() : null, hash]);
   const token = signCustomerToken({ id: result.lastInsertRowid, name: name.trim(), phone: phone.trim(), email: email || null });
   res.status(201).json({ token, customer: { id: result.lastInsertRowid, name: name.trim(), phone: phone.trim(), email: email || null } });
 });
 
-router.post('/customer/login', (req, res) => {
+router.post('/customer/login', async (req, res) => {
   const db = getDb();
   const { phone, password } = req.body;
   if (!phone || !password) return res.status(400).json({ error: 'Phone and password are required' });
 
-  const customer = db.get('SELECT * FROM customers WHERE phone = ?', [phone.trim()]);
+  const customer = await db.get('SELECT * FROM customers WHERE phone = ?', [phone.trim()]);
   if (!customer || !customer.password_hash) {
     return res.status(401).json({ error: 'Invalid phone or password' });
   }
@@ -118,33 +116,33 @@ router.get('/customer/me', requireCustomer, (req, res) => {
   res.json({ customer: req.customer });
 });
 
-router.get('/customer/orders', requireCustomer, (req, res) => {
+router.get('/customer/orders', requireCustomer, async (req, res) => {
   const db = getDb();
-  const orders = db.all('SELECT * FROM orders WHERE customer_id = ? AND is_deleted != 1 ORDER BY created_at DESC', [req.customer.id]);
-  orders.forEach(o => {
-    o.items = db.all('SELECT * FROM order_items WHERE order_id = ?', [o.id]);
+  const orders = await db.all('SELECT * FROM orders WHERE customer_id = ? AND is_deleted != 1 ORDER BY created_at DESC', [req.customer.id]);
+  for (const o of orders) {
+    o.items = await db.all('SELECT * FROM order_items WHERE order_id = ?', [o.id]);
     o.items.forEach(item => { item.addons = item.addons_json ? JSON.parse(item.addons_json) : []; });
-    o.payment = db.get('SELECT * FROM payments WHERE order_id = ?', [o.id]);
-  });
+    o.payment = await db.get('SELECT * FROM payments WHERE order_id = ?', [o.id]);
+  }
   res.json(orders);
 });
 
-router.get('/customer/orders/:orderNumber', requireCustomer, (req, res) => {
+router.get('/customer/orders/:orderNumber', requireCustomer, async (req, res) => {
   const db = getDb();
-  const order = db.get('SELECT * FROM orders WHERE order_number = ? AND customer_id = ? AND is_deleted != 1', [req.params.orderNumber, req.customer.id]);
+  const order = await db.get('SELECT * FROM orders WHERE order_number = ? AND customer_id = ? AND is_deleted != 1', [req.params.orderNumber, req.customer.id]);
   if (!order) {
     return res.status(404).json({ error: 'Order not found' });
   }
-  order.items = db.all('SELECT * FROM order_items WHERE order_id = ?', [order.id]);
+  order.items = await db.all('SELECT * FROM order_items WHERE order_id = ?', [order.id]);
   order.items.forEach(item => { item.addons = item.addons_json ? JSON.parse(item.addons_json) : []; });
-  order.status_history = db.all('SELECT * FROM order_status_history WHERE order_id = ? ORDER BY created_at ASC', [order.id]);
-  order.payment = db.get('SELECT * FROM payments WHERE order_id = ?', [order.id]);
+  order.status_history = await db.all('SELECT * FROM order_status_history WHERE order_id = ? ORDER BY created_at ASC', [order.id]);
+  order.payment = await db.get('SELECT * FROM payments WHERE order_id = ?', [order.id]);
   res.json(order);
 });
 
 router.post('/orders/:orderNumber/submit-payment', requireCustomer, async (req, res) => {
   const db = getDb();
-  const order = db.get('SELECT * FROM orders WHERE order_number = ? AND customer_id = ?', [req.params.orderNumber, req.customer.id]);
+  const order = await db.get('SELECT * FROM orders WHERE order_number = ? AND customer_id = ?', [req.params.orderNumber, req.customer.id]);
   if (!order) {
     return res.status(404).json({ error: 'Order not found' });
   }
@@ -156,11 +154,11 @@ router.post('/orders/:orderNumber/submit-payment', requireCustomer, async (req, 
     return res.status(400).json({ error: 'Payment reference / UTR number is required' });
   }
 
-  db.run('UPDATE payments SET payment_reference = ?, payment_proof = ?, status = ?, updated_at = datetime("now") WHERE order_id = ?',
+  await db.run('UPDATE payments SET payment_reference = ?, payment_proof = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE order_id = ?',
     [payment_reference.trim(), payment_proof || null, 'payment_submitted', order.id]);
-  db.run('UPDATE orders SET payment_status = ?, updated_at = datetime("now") WHERE id = ?', ['payment_submitted', order.id]);
-  addOrderStatusHistory(order.id, 'payment_submitted', 'Payment submitted by customer');
-  createNotification('payment', `Payment Submitted for ${order.order_number}`, `Customer submitted payment reference: ${payment_reference}`, 'admin', order.id);
+  await db.run('UPDATE orders SET payment_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', ['payment_submitted', order.id]);
+  await addOrderStatusHistory(order.id, 'payment_submitted', 'Payment submitted by customer');
+  await createNotification('payment', `Payment Submitted for ${order.order_number}`, `Customer submitted payment reference: ${payment_reference}`, 'admin', order.id);
 
   res.json({ message: 'Payment submitted successfully. Waiting for verification.' });
 });
@@ -182,7 +180,7 @@ const upload = multer({
   }
 });
 
-router.post('/upload', upload.single('image'), (req, res) => {
+router.post('/upload', upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
@@ -204,45 +202,44 @@ router.post('/upload', upload.single('image'), (req, res) => {
     return res.json({ url });
   }
 
-  uploadToStorage(req.file.buffer, req.file.originalname, req.file.mimetype)
-    .then(url => res.json({ url }))
-    .catch(err => {
-      console.error('Upload error:', err);
-      res.status(500).json({ error: 'Upload failed: ' + err.message });
-    });
+  try {
+    const url = await uploadToStorage(req.file.buffer, req.file.originalname, req.file.mimetype);
+    res.json({ url });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Upload failed: ' + err.message });
+  }
 });
 
-// ============ RESTAURANT INFO ============
-router.get('/settings', (req, res) => {
+router.get('/settings', async (req, res) => {
   const db = getDb();
-  const settings = db.get('SELECT * FROM restaurant_settings WHERE id = 1');
-  const status = getRestaurantStatus();
+  const settings = await db.get('SELECT * FROM restaurant_settings WHERE id = 1');
+  const status = await getRestaurantStatus();
   res.json({ ...settings, ...status });
 });
 
-router.get('/homepage', (req, res) => {
+router.get('/homepage', async (req, res) => {
   const db = getDb();
-  const homepage = db.get('SELECT * FROM homepage_content WHERE id = 1');
-  const settings = db.get('SELECT * FROM restaurant_settings WHERE id = 1');
-  const status = getRestaurantStatus();
+  const homepage = await db.get('SELECT * FROM homepage_content WHERE id = 1');
+  const settings = await db.get('SELECT * FROM restaurant_settings WHERE id = 1');
+  const status = await getRestaurantStatus();
   res.json({ homepage, settings: { ...settings, ...status } });
 });
 
-router.get('/status', (req, res) => {
-  res.json(getRestaurantStatus());
+router.get('/status', async (req, res) => {
+  const status = await getRestaurantStatus();
+  res.json(status);
 });
 
-// ============ CATEGORIES ============
-router.get('/categories', (req, res) => {
+router.get('/categories', async (req, res) => {
   const db = getDb();
-  const categories = db.all(
+  const categories = await db.all(
     'SELECT c.*, (SELECT COUNT(*) FROM food_items f WHERE f.category_id = c.id AND f.is_available = 1) as item_count FROM categories c WHERE c.is_active = 1 ORDER BY c.sort_order ASC, c.name ASC'
   );
   res.json(categories);
 });
 
-// ============ MENU / FOOD ITEMS ============
-router.get('/menu', (req, res) => {
+router.get('/menu', async (req, res) => {
   const db = getDb();
   const { category, search, featured, popular, veg } = req.query;
   let sql = `
@@ -276,14 +273,13 @@ router.get('/menu', (req, res) => {
   }
 
   sql += ' ORDER BY f.is_featured DESC, f.is_popular DESC, f.name ASC';
-  const items = db.all(sql, params);
+  const items = await db.all(sql, params);
 
-  // Get all active promotions
-  const allPromotions = db.all(`
+  const allPromotions = await db.all(`
     SELECT * FROM promotions
     WHERE is_active = 1
-      AND (start_date IS NULL OR start_date <= datetime('now'))
-      AND (end_date IS NULL OR end_date > datetime('now'))
+      AND (start_date IS NULL OR start_date <= CURRENT_TIMESTAMP)
+      AND (end_date IS NULL OR end_date > CURRENT_TIMESTAMP)
       AND (usage_limit IS NULL OR used_count < usage_limit)
   `);
   allPromotions.forEach(p => {
@@ -291,26 +287,25 @@ router.get('/menu', (req, res) => {
     try { p.categories = p.categories ? JSON.parse(p.categories) : []; } catch(e) { p.categories = []; }
   });
 
-  // Attach variants, addons, and promotion pricing
-  items.forEach(item => {
-    item.variants = db.all('SELECT * FROM variants WHERE food_item_id = ?', [item.id]);
-    item.addons = db.all('SELECT * FROM addons WHERE food_item_id = ? AND is_available = 1', [item.id]);
+  for (const item of items) {
+    item.variants = await db.all('SELECT * FROM variants WHERE food_item_id = ?', [item.id]);
+    item.addons = await db.all('SELECT * FROM addons WHERE food_item_id = ? AND is_available = 1', [item.id]);
 
     const basePrice = item.discount_price || item.price;
-    const eligiblePromos = getEligiblePromotionsForProduct(item.id, allPromotions);
+    const eligiblePromos = await getEligiblePromotionsForProduct(item.id, allPromotions);
     const priceInfo = calculateProductPrice(basePrice, eligiblePromos);
     item.basePrice = basePrice;
     item.effectivePrice = priceInfo.effectivePrice;
     item.promotionDiscount = priceInfo.discountAmount;
     item.promotion = priceInfo.selectedPromotion;
-  });
+  }
 
   res.json(items);
 });
 
-router.get('/menu/:id', (req, res) => {
+router.get('/menu/:id', async (req, res) => {
   const db = getDb();
-  const item = db.get(`
+  const item = await db.get(`
     SELECT f.*, c.name as category_name, c.slug as category_slug
     FROM food_items f
     LEFT JOIN categories c ON f.category_id = c.id
@@ -321,21 +316,19 @@ router.get('/menu/:id', (req, res) => {
     return res.status(404).json({ error: 'Food item not found' });
   }
 
-  item.variants = db.all('SELECT * FROM variants WHERE food_item_id = ?', [item.id]);
-  item.addons = db.all('SELECT * FROM addons WHERE food_item_id = ? AND is_available = 1', [item.id]);
+  item.variants = await db.all('SELECT * FROM variants WHERE food_item_id = ?', [item.id]);
+  item.addons = await db.all('SELECT * FROM addons WHERE food_item_id = ? AND is_available = 1', [item.id]);
 
-  // Related items (same category)
-  item.related = db.all(
+  item.related = await db.all(
     'SELECT * FROM food_items WHERE category_id = ? AND id != ? AND is_available = 1 LIMIT 4',
     [item.category_id, item.id]
   );
 
-  // Calculate promotion pricing
-  const allPromotions = db.all(`
+  const allPromotions = await db.all(`
     SELECT * FROM promotions
     WHERE is_active = 1
-      AND (start_date IS NULL OR start_date <= datetime('now'))
-      AND (end_date IS NULL OR end_date > datetime('now'))
+      AND (start_date IS NULL OR start_date <= CURRENT_TIMESTAMP)
+      AND (end_date IS NULL OR end_date > CURRENT_TIMESTAMP)
       AND (usage_limit IS NULL OR used_count < usage_limit)
   `);
   allPromotions.forEach(p => {
@@ -344,7 +337,7 @@ router.get('/menu/:id', (req, res) => {
   });
 
   const basePrice = item.discount_price || item.price;
-  const eligiblePromos = getEligiblePromotionsForProduct(item.id, allPromotions);
+  const eligiblePromos = await getEligiblePromotionsForProduct(item.id, allPromotions);
   const priceInfo = calculateProductPrice(basePrice, eligiblePromos);
   item.basePrice = basePrice;
   item.effectivePrice = priceInfo.effectivePrice;
@@ -354,15 +347,14 @@ router.get('/menu/:id', (req, res) => {
   res.json(item);
 });
 
-// ============ SEARCH SUGGESTIONS ============
-router.get('/search/suggestions', (req, res) => {
+router.get('/search/suggestions', async (req, res) => {
   const db = getDb();
   const { q } = req.query;
   if (!q || q.trim().length < 1) {
     return res.json([]);
   }
   const term = `%${q.trim()}%`;
-  const items = db.all(`
+  const items = await db.all(`
     SELECT f.id, f.name, f.image, f.price, f.discount_price, f.is_veg, c.name as category_name
     FROM food_items f
     LEFT JOIN categories c ON f.category_id = c.id
@@ -371,7 +363,7 @@ router.get('/search/suggestions', (req, res) => {
     LIMIT 8
   `, [term, term, term, term]);
 
-  const categories = db.all(`
+  const categories = await db.all(`
     SELECT c.id, c.name, c.slug, c.image
     FROM categories c
     WHERE c.is_active = 1 AND c.name LIKE ?
@@ -381,33 +373,31 @@ router.get('/search/suggestions', (req, res) => {
   res.json({ items, categories });
 });
 
-// ============ COUPONS ============
-router.get('/coupons', (req, res) => {
+router.get('/coupons', async (req, res) => {
   const db = getDb();
-  const coupons = db.all(`
+  const coupons = await db.all(`
     SELECT code, description, discount_type, discount_value, min_order_value, max_discount, expiry_date
     FROM coupons
-    WHERE is_active = 1 AND (expiry_date IS NULL OR expiry_date > datetime('now'))
+    WHERE is_active = 1 AND (expiry_date IS NULL OR expiry_date > CURRENT_TIMESTAMP)
   `);
   res.json(coupons);
 });
 
-router.post('/coupons/validate', (req, res) => {
+router.post('/coupons/validate', async (req, res) => {
   const { code, subtotal } = req.body;
   if (!code || !subtotal) {
     return res.status(400).json({ error: 'Coupon code and subtotal are required' });
   }
-  const result = validateCoupon(code, subtotal);
+  const result = await validateCoupon(code, subtotal);
   if (!result.valid) {
     return res.status(400).json({ error: result.error });
   }
   res.json({ valid: true, discount: result.discount, coupon: result.coupon });
 });
 
-// ============ REVIEWS ============
-router.get('/reviews', (req, res) => {
+router.get('/reviews', async (req, res) => {
   const db = getDb();
-  const reviews = db.all(`
+  const reviews = await db.all(`
     SELECT id, customer_name, rating, review_text, photo, created_at
     FROM reviews
     WHERE is_approved = 1
@@ -416,7 +406,7 @@ router.get('/reviews', (req, res) => {
   res.json(reviews);
 });
 
-router.post('/reviews', (req, res) => {
+router.post('/reviews', async (req, res) => {
   try {
     const db = getDb();
     const { customer_name, customer_phone, rating, review_text, photo } = req.body;
@@ -428,12 +418,12 @@ router.post('/reviews', (req, res) => {
       return res.status(400).json({ error: 'Rating must be between 1 and 5' });
     }
 
-    const result = db.run(
+    const result = await db.run(
       'INSERT INTO reviews (customer_name, customer_phone, rating, review_text, photo) VALUES (?, ?, ?, ?, ?)',
       [customer_name, customer_phone, rating, review_text || '', photo || null]
     );
 
-    createNotification('review', 'New Review Submitted', `${customer_name} submitted a ${rating}-star review`, 'admin');
+    await createNotification('review', 'New Review Submitted', `${customer_name} submitted a ${rating}-star review`, 'admin');
 
     res.status(201).json({ id: result.lastInsertRowid, message: 'Review submitted successfully. It will appear after approval.' });
   } catch (e) {
@@ -442,8 +432,7 @@ router.post('/reviews', (req, res) => {
   }
 });
 
-// ============ ORDERS ============
-router.post('/orders', requireCustomer, (req, res) => {
+router.post('/orders', requireCustomer, async (req, res) => {
   const db = getDb();
   const {
     customer_name,
@@ -458,7 +447,6 @@ router.post('/orders', requireCustomer, (req, res) => {
     coupon_code
   } = req.body;
 
-  // ===== Validation =====
   if (!customer_name || !customer_name.trim()) {
     return res.status(400).json({ error: 'Customer name is required' });
   }
@@ -479,23 +467,20 @@ router.post('/orders', requireCustomer, (req, res) => {
     return res.status(400).json({ error: 'Invalid payment method' });
   }
 
-  // Check restaurant open status
-  const status = getRestaurantStatus();
-  const settings = getSettings();
+  const status = await getRestaurantStatus();
+  const settings = await getSettings();
   if (!status.is_open && settings.allow_ordering_when_closed !== 1) {
     return res.status(400).json({ error: 'Restaurant is currently closed. Please try again during opening hours.' });
   }
 
-  // ===== Calculate totals =====
   let subtotal = 0;
   const orderItems = [];
 
-  // Get all active promotions for server-side validation
-  const allPromotions = db.all(`
+  const allPromotions = await db.all(`
     SELECT * FROM promotions
     WHERE is_active = 1
-      AND (start_date IS NULL OR start_date <= datetime('now'))
-      AND (end_date IS NULL OR end_date > datetime('now'))
+      AND (start_date IS NULL OR start_date <= CURRENT_TIMESTAMP)
+      AND (end_date IS NULL OR end_date > CURRENT_TIMESTAMP)
       AND (usage_limit IS NULL OR used_count < usage_limit)
   `);
   allPromotions.forEach(p => {
@@ -506,7 +491,7 @@ router.post('/orders', requireCustomer, (req, res) => {
   const cartItemsForPromo = [];
 
   for (const item of items) {
-    const food = db.get('SELECT * FROM food_items WHERE id = ? AND is_available = 1', [item.food_item_id]);
+    const food = await db.get('SELECT * FROM food_items WHERE id = ? AND is_available = 1', [item.food_item_id]);
     if (!food) {
       return res.status(400).json({ error: `Food item ${item.food_item_id} not found or unavailable` });
     }
@@ -519,21 +504,19 @@ router.post('/orders', requireCustomer, (req, res) => {
     const unitPrice = food.discount_price || food.price;
     let itemTotal = unitPrice * qty;
 
-    // Variant
     let variantName = null;
     if (item.variant_id) {
-      const variant = db.get('SELECT * FROM variants WHERE id = ? AND food_item_id = ?', [item.variant_id, food.id]);
+      const variant = await db.get('SELECT * FROM variants WHERE id = ? AND food_item_id = ?', [item.variant_id, food.id]);
       if (variant) {
         variantName = variant.name;
         itemTotal += variant.price_adjustment * qty;
       }
     }
 
-    // Addons
     let addons = [];
     if (item.addon_ids && Array.isArray(item.addon_ids)) {
       for (const addonId of item.addon_ids) {
-        const addon = db.get('SELECT * FROM addons WHERE id = ? AND food_item_id = ? AND is_available = 1', [addonId, food.id]);
+        const addon = await db.get('SELECT * FROM addons WHERE id = ? AND food_item_id = ? AND is_available = 1', [addonId, food.id]);
         if (addon) {
           addons.push({ id: addon.id, name: addon.name, price: addon.price });
           itemTotal += addon.price * qty;
@@ -562,15 +545,13 @@ router.post('/orders', requireCustomer, (req, res) => {
     });
   }
 
-  // Apply promotions server-side
   const cartPriceResult = calculateCartPrice(cartItemsForPromo, allPromotions, { subtotal });
   const promotionDiscount = cartPriceResult.discount;
 
   if (cartPriceResult.selectedPromotion && cartPriceResult.selectedPromotion.id) {
-    incrementPromotionUsage(cartPriceResult.selectedPromotion.id);
+    await incrementPromotionUsage(cartPriceResult.selectedPromotion.id);
   }
 
-  // Calculate per-item promotion discount for snapshots
   const selectedPromo = cartPriceResult.selectedPromotion;
   const itemPromoDiscounts = {};
   if (selectedPromo && promotionDiscount > 0) {
@@ -590,11 +571,10 @@ router.post('/orders', requireCustomer, (req, res) => {
     });
   }
 
-  // ===== Coupon =====
   let couponDiscount = 0;
   let couponCode = null;
   if (coupon_code) {
-    const result = validateCoupon(coupon_code, cartPriceResult.effectiveSubtotal);
+    const result = await validateCoupon(coupon_code, cartPriceResult.effectiveSubtotal);
     if (!result.valid) {
       return res.status(400).json({ error: result.error });
     }
@@ -602,26 +582,22 @@ router.post('/orders', requireCustomer, (req, res) => {
     couponCode = result.coupon.code;
   }
 
-  // ===== Delivery & tax =====
   const effectiveSubtotal = Math.max(0, subtotal - promotionDiscount - couponDiscount);
   const deliveryCharge = effectiveSubtotal >= settings.min_order_value ? settings.delivery_charge : settings.delivery_charge;
   const tax = effectiveSubtotal * (settings.tax_rate / 100);
   const grandTotal = effectiveSubtotal + deliveryCharge + tax;
 
-  // Prevent negative total
   if (grandTotal < 0) {
     return res.status(400).json({ error: 'Invalid order total. Please check your cart.' });
   }
 
-   // ===== Use authenticated customer =====
-   const customerId = req.customer.id;
-   db.run('UPDATE customers SET name = ?, address = ?, landmark = ?, area = ?, pincode = ? WHERE id = ?',
-     [customer_name.trim(), customer_address.trim(), customer_landmark || '', customer_area || '', customer_pincode.trim(), customerId]);
+  const customerId = req.customer.id;
+  await db.run('UPDATE customers SET name = ?, address = ?, landmark = ?, area = ?, pincode = ? WHERE id = ?',
+    [customer_name.trim(), customer_address.trim(), customer_landmark || '', customer_area || '', customer_pincode.trim(), customerId]);
 
-  // ===== Create order =====
-  const orderNumber = generateOrderNumber();
+  const orderNumber = await generateOrderNumber();
   const trackingId = generateTrackingId();
-  const orderResult = db.run(`
+  const orderResult = await db.run(`
     INSERT INTO orders (
       order_number, tracking_id, customer_id, customer_name, customer_phone, customer_address,
       customer_landmark, customer_area, customer_pincode, delivery_instructions,
@@ -638,28 +614,24 @@ router.post('/orders', requireCustomer, (req, res) => {
 
   const orderId = orderResult.lastInsertRowid;
 
-  // ===== Insert order items =====
   for (const oi of orderItems) {
     const promoDiscount = itemPromoDiscounts[oi.food_item_id] || 0;
-    db.run(`
+    await db.run(`
       INSERT INTO order_items (order_id, food_item_id, food_name, food_image, quantity, unit_price, variant_name, addons_json, item_total, promotion_discount)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [orderId, oi.food_item_id, oi.food_name, oi.food_image, oi.quantity, oi.unit_price, oi.variant_name, oi.addons_json, oi.item_total, promoDiscount]);
   }
 
-  // ===== Payment record =====
-  db.run('INSERT INTO payments (order_id, method, amount, status) VALUES (?, ?, ?, ?)',
+  await db.run('INSERT INTO payments (order_id, method, amount, status) VALUES (?, ?, ?, ?)',
     [orderId, payment_method, grandTotal, 'pending']);
 
-  // ===== Coupon usage =====
   if (couponCode) {
-    incrementCouponUsage(couponCode);
+    await incrementCouponUsage(couponCode);
   }
 
-  // ===== Notifications =====
   const initialStatus = payment_method === 'cod' ? 'received' : 'payment_pending';
-  addOrderStatusHistory(orderId, initialStatus, 'Order received');
-  createNotification('new_order', 'New Order Received', `Order ${orderNumber} for ₹${grandTotal.toFixed(2)}`, 'admin', orderId);
+  await addOrderStatusHistory(orderId, initialStatus, 'Order received');
+  await createNotification('new_order', 'New Order Received', `Order ${orderNumber} for ₹${grandTotal.toFixed(2)}`, 'admin', orderId);
 
   res.status(201).json({
     order_id: orderId,
@@ -672,36 +644,33 @@ router.post('/orders', requireCustomer, (req, res) => {
   });
 });
 
-// ============ CUSTOMER NOTIFICATIONS ============
-router.get('/orders/:orderNumber/notifications', (req, res) => {
+router.get('/orders/:orderNumber/notifications', async (req, res) => {
   const db = getDb();
-  const order = db.get('SELECT * FROM orders WHERE order_number = ?', [req.params.orderNumber]);
+  const order = await db.get('SELECT * FROM orders WHERE order_number = ?', [req.params.orderNumber]);
   if (!order) {
     return res.status(404).json({ error: 'Order not found' });
   }
-  const notifications = db.all(
-    'SELECT * FROM notifications WHERE order_id = ? AND recipient_type = "customer" ORDER BY created_at DESC',
+  const notifications = await db.all(
+    "SELECT * FROM notifications WHERE order_id = ? AND recipient_type = 'customer' ORDER BY created_at DESC",
     [order.id]
   );
   res.json(notifications);
 });
 
-// ============ ORDER TRACKING ============
-router.get('/orders/:identifier', requireCustomer, (req, res) => {
+router.get('/orders/:identifier', requireCustomer, async (req, res) => {
   const db = getDb();
   const identifier = req.params.identifier;
-  // Match by order_number or tracking_id
-  const order = db.get('SELECT * FROM orders WHERE (order_number = ? OR tracking_id = ?) AND customer_id = ? AND is_deleted != 1', [identifier, identifier, req.customer.id]);
+  const order = await db.get('SELECT * FROM orders WHERE (order_number = ? OR tracking_id = ?) AND customer_id = ? AND is_deleted != 1', [identifier, identifier, req.customer.id]);
   if (!order) {
     return res.status(404).json({ error: 'Order not found' });
   }
 
-  order.items = db.all('SELECT * FROM order_items WHERE order_id = ?', [order.id]);
+  order.items = await db.all('SELECT * FROM order_items WHERE order_id = ?', [order.id]);
   order.items.forEach(item => {
     item.addons = item.addons_json ? JSON.parse(item.addons_json) : [];
   });
-  order.status_history = db.all('SELECT * FROM order_status_history WHERE order_id = ? ORDER BY created_at ASC', [order.id]);
-  order.payment = db.get('SELECT * FROM payments WHERE order_id = ?', [order.id]);
+  order.status_history = await db.all('SELECT * FROM order_status_history WHERE order_id = ? ORDER BY created_at ASC', [order.id]);
+  order.payment = await db.get('SELECT * FROM payments WHERE order_id = ?', [order.id]);
 
   res.json(order);
 });
